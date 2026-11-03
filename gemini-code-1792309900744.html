@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Status & PO Analytics Dashboard</title>
+    <!-- SheetJS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        body { margin: 0; padding: 20px; background-color: #f4f6f9; color: #333; }
+        h1, h2, h3 { margin-top: 0; color: #1a252f; }
+        .container { max-width: 1480px; margin: 0 auto; }
+        .card { background: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .grid-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+        label { font-weight: bold; display: block; margin-bottom: 6px; font-size: 14px; }
+        input[type="file"], input[type="datetime-local"], input[type="text"], select { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        button { background-color: #0d6efd; color: white; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; margin-top: 5px; }
+        button:hover { background-color: #0b5ed7; }
+        button.btn-success { background-color: #198754; }
+        button.btn-danger { background-color: #dc3545; }
+        button.btn-secondary { background-color: #6c757d; }
+        button.btn-sm { padding: 4px 8px; font-size: 11px; margin-top: 0; }
+        
+        .excel-table { border-collapse: collapse; width: 100%; margin-top: 15px; font-size: 13px; }
+        .excel-table th, .excel-table td { border: 1px solid #b2c2d4; padding: 8px 12px; text-align: center; }
+        .excel-table th { background-color: #b9d7ea; color: #000; font-weight: bold; }
+        .excel-table td.row-label { text-align: left; font-weight: bold; background-color: #f8f9fa; }
+        .excel-table tr.grand-total { background-color: #b9d7ea; font-weight: bold; }
+
+        .multiselect-container { position: relative; display: inline-block; width: 220px; }
+        .multiselect-btn { width: 100%; text-align: left; background: #fff; border: 1px solid #ccc; padding: 8px 12px; border-radius: 4px; font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .multiselect-dropdown { display: none; position: absolute; top: 100%; left: 0; width: 100%; z-index: 1000; background: #fff; border: 1px solid #ccc; border-radius: 4px; max-height: 250px; overflow-y: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 8px; }
+        .multiselect-dropdown.show { display: block; }
+        .multiselect-option { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+        .multiselect-actions { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 6px; }
+
+        .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; margin-bottom: 15px; background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #e9ecef; }
+        .filter-item { display: flex; flex-direction: column; gap: 4px; }
+        .filter-item label { font-size: 12px; margin-bottom: 0; color: #495057; }
+
+        .tracker-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .tracker-table th, .tracker-table td { border: 1px solid #dee2e6; padding: 8px 10px; text-align: left; }
+        .tracker-table th { background-color: #e9ecef; font-weight: bold; position: sticky; top: 0; z-index: 10; cursor: pointer; user-select: none; }
+        .tracker-table th:hover { background-color: #dbe2e8; }
+        .stage-chip { display: inline-block; background: #e3f2fd; color: #0d47a1; padding: 3px 8px; border-radius: 12px; font-size: 11px; margin: 2px; border: 1px solid #bbdefb; white-space: nowrap; }
+        .stage-chip.current { background: #d1e7dd; color: #0f5132; font-weight: bold; border-color: #badbcc; }
+        .time-text { font-size: 10px; color: #6c757d; display: block; }
+
+        .delay-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
+        .delay-badge.high { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+        .delay-badge.normal { background-color: #e2e3e5; color: #41464b; border: 1px solid #d3d6d8; }
+        .qc-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; background-color: #ffc107; color: #000; margin-left: 4px; }
+        .recreate-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; background-color: #0dcaf0; color: #000; margin-left: 4px; }
+        .grn-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
+
+        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>📦 Order Status & PO Analytics Dashboard</h1>
+
+    <!-- SECTION 1: DATA UPLOADER -->
+    <div class="card">
+        <h2>1. Upload Data Sheets</h2>
+        <div class="grid-inputs">
+            <div>
+                <label for="poFile">PO Sheet (.xlsx / .csv)</label>
+                <input type="file" id="poFile" accept=".xlsx, .xls, .csv">
+            </div>
+            <div>
+                <label for="dumpFile">Dump Status Sheet (.xlsx / .csv)</label>
+                <input type="file" id="dumpFile" accept=".xlsx, .xls, .csv">
+            </div>
+            <div>
+                <label for="dumpTime">Dump Status Upload Time</label>
+                <input type="datetime-local" id="dumpTime">
+            </div>
+        </div>
+        <div style="margin-top: 15px; display: flex; flex-wrap: wrap; gap: 10px;">
+            <button onclick="processFiles()">Process & Update Dashboard</button>
+            <button class="btn-danger" onclick="revokeLastDump()">↩ Revoke Last Dump Upload</button>
+            <button class="btn-secondary" onclick="exportDataJSON()">Export History Backup (JSON)</button>
+            <button class="btn-secondary" onclick="document.getElementById('importFile').click()">Import History Backup</button>
+            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importDataJSON(event)">
+        </div>
+    </div>
+
+    <!-- SECTION 2: PIVOT TABLE -->
+    <div class="card" id="pivotCard" style="display: none;">
+        <h2>2. Order Status Pivot Table (Active Orders)</h2>
+        <div class="filter-bar">
+            <div class="filter-item">
+                <label>QC_Fail Filter</label>
+                <select id="pivotQcFilter" style="width: 140px;" onchange="renderPivotTable()">
+                    <option value="(All)">(All)</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label>PO Ageing Day</label>
+                <div class="multiselect-container" id="pivotAgeingContainer">
+                    <button type="button" class="multiselect-btn" onclick="toggleDropdown('pivotAgeingDropdown')">Select Ageing Days...</button>
+                    <div class="multiselect-dropdown" id="pivotAgeingDropdown">
+                        <div class="multiselect-actions">
+                            <button type="button" class="btn-sm" onclick="selectAllMulti('pivotAgeingDropdown', true, renderPivotTable)">Select All</button>
+                            <button type="button" class="btn-sm btn-secondary" onclick="selectAllMulti('pivotAgeingDropdown', false, renderPivotTable)">Clear</button>
+                        </div>
+                        <div class="options-list" id="pivotAgeingOptions"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-item">
+                <label>Row Labels (Status)</label>
+                <div class="multiselect-container" id="pivotStatusContainer">
+                    <button type="button" class="multiselect-btn" onclick="toggleDropdown('pivotStatusDropdown')">Select Statuses...</button>
+                    <div class="multiselect-dropdown" id="pivotStatusDropdown">
+                        <div class="multiselect-actions">
+                            <button type="button" class="btn-sm" onclick="selectAllMulti('pivotStatusDropdown', true, renderPivotTable)">Select All</button>
+                            <button type="button" class="btn-sm btn-secondary" onclick="selectAllMulti('pivotStatusDropdown', false, renderPivotTable)">Clear</button>
+                        </div>
+                        <div class="options-list" id="pivotStatusOptions"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-item">
+                <label>Sort Pivot Table By</label>
+                <select id="pivotSortOrder" style="width: 220px;" onchange="renderPivotTable()">
+                    <option value="grand_desc">Grand Total (High to Low)</option>
+                    <option value="grand_asc">Grand Total (Low to High)</option>
+                    <option value="status_asc">Row Label (A to Z)</option>
+                    <option value="status_desc">Row Label (Z to A)</option>
+                </select>
+            </div>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="excel-table" id="pivotTable"></table>
+        </div>
+    </div>
+
+    <!-- SECTION 3: HISTORICAL TRACKER TABLE -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h2>3. Historical Order Stage Tracker (Active Orders)</h2>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn-success btn-sm" onclick="exportTrackerToExcel()">📥 Export Active Tracker (XLSX)</button>
+                <button class="btn-danger btn-sm" onclick="clearDatabase()">Clear All History Database</button>
+            </div>
+        </div>
+        
+        <p style="font-size: 13px; color: #555;">
+            Track active order status progression ordered strictly by timestamp.
+        </p>
+
+        <div class="filter-bar">
+            <div class="filter-item" style="flex: 1; min-width: 200px;">
+                <label>Search Orders</label>
+                <input type="text" id="trackerSearch" placeholder="Search Parent UW, Increment ID, Job ID, Lens Name..." onkeyup="filterTrackerData()">
+            </div>
+            <div class="filter-item">
+                <label>PO Ageing Day</label>
+                <div class="multiselect-container">
+                    <button type="button" class="multiselect-btn" id="trackerAgeingBtn" onclick="toggleDropdown('trackerAgeingDropdown')">Select Ageing Days...</button>
+                    <div class="multiselect-dropdown" id="trackerAgeingDropdown">
+                        <div class="multiselect-actions">
+                            <button type="button" class="btn-sm" onclick="selectAllMulti('trackerAgeingDropdown', true, filterTrackerData)">Select All</button>
+                            <button type="button" class="btn-sm btn-secondary" onclick="selectAllMulti('trackerAgeingDropdown', false, filterTrackerData)">Clear</button>
+                        </div>
+                        <div class="options-list" id="trackerAgeingOptions"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-item">
+                <label>Current Status</label>
+                <div class="multiselect-container">
+                    <button type="button" class="multiselect-btn" id="trackerStatusBtn" onclick="toggleDropdown('trackerStatusDropdown')">Select Current Status...</button>
+                    <div class="multiselect-dropdown" id="trackerStatusDropdown">
+                        <div class="multiselect-actions">
+                            <button type="button" class="btn-sm" onclick="selectAllMulti('trackerStatusDropdown', true, filterTrackerData)">Select All</button>
+                            <button type="button" class="btn-sm btn-secondary" onclick="selectAllMulti('trackerStatusDropdown', false, filterTrackerData)">Clear</button>
+                        </div>
+                        <div class="options-list" id="trackerStatusOptions"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="overflow-x: auto; max-height: 480px;">
+            <table class="tracker-table" id="trackerTable">
+                <thead>
+                    <tr>
+                        <th onclick="handleTrackerHeaderSort('po_ageing')">PO Ageing <span id="sort_po_ageing"></span></th>
+                        <th onclick="handleTrackerHeaderSort('parent_uw')">Parent_UW <span id="sort_parent_uw"></span></th>
+                        <th onclick="handleTrackerHeaderSort('increment_id')">PO Increment ID <span id="sort_increment_id"></span></th>
+                        <th onclick="handleTrackerHeaderSort('job_id')">Job ID(s) <span id="sort_job_id"></span></th>
+                        <th onclick="handleTrackerHeaderSort('lensname')">Lens Name <span id="sort_lensname"></span></th>
+                        <th onclick="handleTrackerHeaderSort('dump_inc_id')">Dump Increment ID <span id="sort_dump_inc_id"></span></th>
+                        <th onclick="handleTrackerHeaderSort('delay_ms')">Time in Stage / Delay <span id="sort_delay_ms"></span></th>
+                        <th onclick="handleTrackerHeaderSort('current_status')">Current Status & Chronological History <span id="sort_current_status"></span></th>
+                    </tr>
+                </thead>
+                <tbody id="trackerTableBody">
+                    <tr><td colspan="8" style="text-align:center; color:#777;">No records loaded. Upload files to display history.</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <span id="pageInfo">Showing 0 of 0 records</span>
+            <div>
+                <button class="btn-sm btn-secondary" onclick="changePage(-1)">Previous</button>
+                <button class="btn-sm btn-secondary" onclick="changePage(1)">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 4: GRN COMPLETED ORDERS DUMP -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h2>4. GRN Completed Orders Dump</h2>
+            <button class="btn-success btn-sm" onclick="exportGRNToExcel()">📥 Export GRN Completed Orders (XLSX)</button>
+        </div>
+        <p style="font-size: 13px; color: #555;">
+            Orders that completed their journey and were removed from the PO sheet are stored here with their full completion history timeline.
+        </p>
+        <div style="overflow-x: auto; max-height: 400px;">
+            <table class="tracker-table" id="grnTable">
+                <thead>
+                    <tr>
+                        <th>GRN Status</th>
+                        <th>Parent_UW</th>
+                        <th>PO Increment ID</th>
+                        <th>Job ID</th>
+                        <th>Lens Name</th>
+                        <th>Final Stage</th>
+                        <th>Completion Timestamp</th>
+                        <th>Full Journey Stage History</th>
+                    </tr>
+                </thead>
+                <tbody id="grnTableBody">
+                    <tr><td colspan="8" style="text-align:center; color:#777;">No completed GRN orders recorded yet.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('dumpTime').value = new Date().toISOString().slice(0, 16);
+
+    const DB_NAME = "OrderTrackerDB";
+    const DB_VERSION = 1;
+    let db;
+
+    function openDatabase() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("orders")) {
+                    db.createObjectStore("orders", { keyPath: "parent_uw" });
+                }
+            };
+            request.onsuccess = (e) => {
+                db = e.target.result;
+                resolve(db);
+            };
+            request.onerror = (e) => reject("IndexedDB Error: " + e.target.error);
+        });
+    }
+
+    async function saveOrderToDB(orderObj) {
+        return new Promise((resolve, reject) => {
+            try {
+                const tx = db.transaction("orders", "readwrite");
+                const store = tx.objectStore("orders");
+                store.put(orderObj);
+                tx.oncomplete = () => resolve();
+                tx.onerror = (e) => reject(e.target.error);
+            } catch(e) { reject(e); }
+        });
+    }
+
+    async function getAllOrdersFromDB() {
+        return new Promise((resolve, reject) => {
+            try {
+                const tx = db.transaction("orders", "readonly");
+                const store = tx.objectStore("orders");
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = (e) => reject(e.target.error);
+            } catch(e) { reject(e); }
+        });
+    }
+
+    async function clearDatabase() {
+        if (confirm("Are you sure you want to clear all historical order data from browser storage?")) {
+            const tx = db.transaction("orders", "readwrite");
+            tx.objectStore("orders").clear();
+            tx.oncomplete = () => {
+                alert("Database cleared successfully!");
+                location.reload();
+            };
+        }
+    }
+
+    let poData = [];
+    let dumpData = [];
+    let trackerAllOrders = [];
+    let trackerFilteredOrders = [];
+    let grnOrders = [];
+    let currentPage = 1;
+    const pageSize = 50;
+
+    let trackerSortColumn = 'delay_ms';
+    let trackerSortDirection = 'desc';
+
+    window.onclick = function(event) {
+        if (!event.target.matches('.multiselect-btn') && !event.target.closest('.multiselect-dropdown')) {
+            document.querySelectorAll('.multiselect-dropdown').forEach(el => el.classList.remove('show'));
+        }
+    };
+
+    function toggleDropdown(id) {
+        const drop = document.getElementById(id);
+        const isOpen = drop.classList.contains('show');
+        document.querySelectorAll('.multiselect-dropdown').forEach(el => el.classList.remove('show'));
+        if (!isOpen) drop.classList.add('show');
+    }
+
+    function cleanId(val) {
+        if (val === undefined || val === null) return '';
+        let str = String(val).trim();
+        if (str.endsWith('.0')) str = str.slice(0, -2);
+        if (str.includes('e+') || str.includes('E+')) {
+            try { str = Number(str).toLocaleString('fullwide', { useGrouping: false }); } catch(e) {}
+        }
+        return str.trim();
+    }
+
+    function getValCaseInsensitive(row, targetKey) {
+        if (!row) return '';
+        const keys = Object.keys(row);
+        const targetClean = targetKey.toLowerCase().replace(/[^a-z0-9]/g, '');
+        for (let k of keys) {
+            if (k.toLowerCase().replace(/[^a-z0-9]/g, '') === targetClean) return row[k];
+        }
+        return '';
+    }
+
+    function readExcelOrCsv(file) {
+        return new Promise((resolve, reject) => {
+            if (typeof XLSX === 'undefined') {
+                reject(new Error("SheetJS library is not loaded. Please check your internet connection or script CDN link."));
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheet];
+                    const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                    resolve(json);
+                } catch(err) { reject(err); }
+            };
+            reader.onerror = (err) => reject(err);
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    function sortHistoryChronologically(historyArray) {
+        return historyArray.sort((a, b) => {
+            const timeA = new Date(a.timestamp.replace(' ', 'T')).getTime();
+            const timeB = new Date(b.timestamp.replace(' ', 'T')).getTime();
+            return timeA - timeB;
+        });
+    }
+
+    async function processFiles() {
+        const poFileInput = document.getElementById('poFile').files[0];
+        const dumpFileInput = document.getElementById('dumpFile').files[0];
+        const uploadTimeVal = document.getElementById('dumpTime').value;
+
+        if (!poFileInput || !dumpFileInput) {
+            alert("Please select both PO Sheet and Dump Status Sheet.");
+            return;
+        }
+
+        const formattedTimestamp = uploadTimeVal ? uploadTimeVal.replace('T', ' ') : new Date().toLocaleString();
+
+        try {
+            poData = await readExcelOrCsv(poFileInput);
+            dumpData = await readExcelOrCsv(dumpFileInput);
+
+            if (poData.length === 0) {
+                alert("The uploaded PO Sheet is empty.");
+                return;
+            }
+
+            const existingOrders = await getAllOrdersFromDB();
+            const orderMap = new Map();
+            existingOrders.forEach(o => orderMap.set(cleanId(o.parent_uw), o));
+
+            const activePOUwSet = new Set();
+            poData.forEach(r => {
+                const uw = cleanId(getValCaseInsensitive(r, 'parent_uw'));
+                if (uw) activePOUwSet.add(uw);
+            });
+
+            for (let [uw, storedOrder] of orderMap.entries()) {
+                if (!storedOrder.is_grn && !activePOUwSet.has(uw)) {
+                    storedOrder.is_grn = true;
+                    storedOrder.grn_timestamp = formattedTimestamp;
+                    await saveOrderToDB(storedOrder);
+                }
+            }
+
+            const dumpGroupedByUW = new Map();
+            dumpData.forEach(d => {
+                const uw = cleanId(getValCaseInsensitive(d, 'parent_uw'));
+                const inc = cleanId(getValCaseInsensitive(d, 'increment_id'));
+                const statusStr = String(getValCaseInsensitive(d, 'STATUS') || '').trim();
+                const jobIdStr = cleanId(getValCaseInsensitive(d, 'JOB ID') || getValCaseInsensitive(d, 'job_id'));
+
+                if (uw) {
+                    if (!dumpGroupedByUW.has(uw)) dumpGroupedByUW.set(uw, []);
+                    dumpGroupedByUW.get(uw).push({ job_id: jobIdStr, dump_inc_id: inc, status: statusStr });
+                }
+            });
+
+            function findAllDumpMatches(poUW, poInc) {
+                let matches = dumpGroupedByUW.get(poUW) || [];
+                if (matches.length > 0) return matches;
+
+                const found = [];
+                for (let d of dumpData) {
+                    const dumpInc = cleanId(getValCaseInsensitive(d, 'increment_id'));
+                    if (poInc && dumpInc && dumpInc.startsWith(poInc)) {
+                        found.push({
+                            job_id: cleanId(getValCaseInsensitive(d, 'JOB ID') || getValCaseInsensitive(d, 'job_id')),
+                            dump_inc_id: dumpInc,
+                            status: String(getValCaseInsensitive(d, 'STATUS') || '').trim()
+                        });
+                    }
+                }
+                return found;
+            }
+
+            for (let row of poData) {
+                const uw = cleanId(getValCaseInsensitive(row, 'parent_uw'));
+                const poInc = cleanId(getValCaseInsensitive(row, 'increment_id'));
+                if (!uw) continue;
+
+                const dumpMatches = findAllDumpMatches(uw, poInc);
+                dumpMatches.sort((a,b) => String(a.dump_inc_id).localeCompare(String(b.dump_inc_id)));
+
+                const latestDump = dumpMatches.length > 0 ? dumpMatches[dumpMatches.length - 1] : null;
+                const matchedStatus = latestDump ? latestDump.status : 'Unknown';
+
+                let existingRecord = orderMap.get(uw);
+                const newAgeing = String(getValCaseInsensitive(row, 'po_ageing Day') || '0').trim();
+                const lens = String(getValCaseInsensitive(row, 'lensname') || '').trim();
+                const qc = String(getValCaseInsensitive(row, 'QC_Fail') || '0').trim();
+
+                const allJobIds = Array.from(new Set(dumpMatches.map(m => m.job_id).filter(j => j !== '')));
+                const allDumpIncs = Array.from(new Set(dumpMatches.map(m => m.dump_inc_id).filter(i => i !== '')));
+
+                if (!existingRecord) {
+                    existingRecord = {
+                        parent_uw: uw,
+                        po_ageing: newAgeing,
+                        increment_id: poInc,
+                        lensname: lens,
+                        qc_fail: qc,
+                        job_id: allJobIds.join(', '),
+                        dump_inc_id: allDumpIncs.join(', '),
+                        recreate_count: dumpMatches.length,
+                        current_status: matchedStatus,
+                        is_grn: false,
+                        history: [{ status: matchedStatus, timestamp: formattedTimestamp }]
+                    };
+                } else {
+                    existingRecord.is_grn = false;
+                    existingRecord.po_ageing = newAgeing;
+                    if (poInc) existingRecord.increment_id = poInc;
+                    if (lens) existingRecord.lensname = lens;
+                    existingRecord.qc_fail = qc;
+                    existingRecord.recreate_count = Math.max(existingRecord.recreate_count || 1, dumpMatches.length);
+                    existingRecord.job_id = allJobIds.join(', ');
+                    existingRecord.dump_inc_id = allDumpIncs.join(', ');
+
+                    const existingTimestampIndex = existingRecord.history.findIndex(h => h.timestamp === formattedTimestamp);
+                    if (existingTimestampIndex !== -1) {
+                        existingRecord.history[existingTimestampIndex].status = matchedStatus;
+                    } else {
+                        existingRecord.history.push({ 
+                            status: matchedStatus, 
+                            timestamp: formattedTimestamp 
+                        });
+                    }
+
+                    existingRecord.history = sortHistoryChronologically(existingRecord.history);
+                    existingRecord.current_status = existingRecord.history[existingRecord.history.length - 1].status;
+                }
+
+                orderMap.set(uw, existingRecord);
+                await saveOrderToDB(existingRecord);
+            }
+
+            await loadTrackerFromDB();
+            setupPivotFilters();
+            document.getElementById('pivotCard').style.display = 'block';
+            renderPivotTable();
+
+            alert("Dashboard updated successfully!");
+
+        } catch (err) {
+            alert("Error processing files: " + err.message);
+            console.error(err);
+        }
+    }
+
+    async function revokeLastDump() {
+        const orders = await getAllOrdersFromDB();
+        if (orders.length === 0) {
+            alert("No historical dump records found to revoke.");
+            return;
+        }
+
+        let maxTimestamp = "";
+        orders.forEach(o => {
+            if (o.history && o.history.length > 0) {
+                const lastTs = o.history[o.history.length - 1].timestamp;
+                if (lastTs > maxTimestamp) maxTimestamp = lastTs;
+            }
+        });
+
+        if (!maxTimestamp) {
+            alert("No timestamp entries found to revoke.");
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to revoke/undo the last dump upload recorded at: "${maxTimestamp}"?`)) return;
+
+        let modifiedCount = 0;
+        for (let order of orders) {
+            if (order.history && order.history.length > 0) {
+                const lastIndex = order.history.length - 1;
+                if (order.history[lastIndex].timestamp === maxTimestamp) {
+                    order.history.pop();
+                    modifiedCount++;
+                    if (order.history.length > 0) {
+                        order.current_status = order.history[order.history.length - 1].status;
+                    } else {
+                        order.current_status = 'Unknown';
+                    }
+                    await saveOrderToDB(order);
+                }
+            }
+        }
+
+        await loadTrackerFromDB();
+        alert(`Successfully revoked dump upload (${maxTimestamp}). Updated ${modifiedCount} order records!`);
+    }
+
+    function setupPivotFilters() {
+        const qcSelect = document.getElementById('pivotQcFilter');
+        qcSelect.innerHTML = '<option value="(All)">(All)</option>';
+        const qcValues = [...new Set(poData.map(r => String(getValCaseInsensitive(r, 'QC_Fail')).trim()).filter(v => v !== ""))].sort();
+        qcValues.forEach(val => qcSelect.appendChild(new Option(val, val)));
+
+        const ageingList = [...new Set(poData.map(r => String(getValCaseInsensitive(r, 'po_ageing Day') || '0').trim()))].sort((a,b) => Number(a)-Number(b));
+        populatePivotMultiOptions('pivotAgeingOptions', ageingList);
+
+        const statusList = [...new Set(dumpData.map(r => String(getValCaseInsensitive(r, 'STATUS') || 'Unknown').trim()))].sort();
+        populatePivotMultiOptions('pivotStatusOptions', statusList);
+    }
+
+    function populatePivotMultiOptions(elementId, values) {
+        const container = document.getElementById(elementId);
+        container.innerHTML = '';
+        values.forEach(val => {
+            const label = document.createElement('label');
+            label.className = 'multiselect-option';
+            label.innerHTML = `<input type="checkbox" value="${val}" checked onchange="renderPivotTable()"> ${val}`;
+            container.appendChild(label);
+        });
+    }
+
+    function populateTrackerMultiOptions(elementId, values) {
+        const container = document.getElementById(elementId);
+        container.innerHTML = '';
+        values.forEach(val => {
+            const label = document.createElement('label');
+            label.className = 'multiselect-option';
+            label.innerHTML = `<input type="checkbox" value="${val}" checked onchange="filterTrackerData()"> ${val}`;
+            container.appendChild(label);
+        });
+    }
+
+    function getSelectedMultiValues(dropdownId) {
+        const checkboxes = document.querySelectorAll(`#${dropdownId} .options-list input[type="checkbox"]:checked`);
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    function selectAllMulti(dropdownId, selectState, callback) {
+        const checkboxes = document.querySelectorAll(`#${dropdownId} .options-list input[type="checkbox"]`);
+        checkboxes.forEach(cb => cb.checked = selectState);
+        callback();
+    }
+
+    function renderPivotTable() {
+        const selectedQC = document.getElementById('pivotQcFilter').value;
+        const selectedAgeings = getSelectedMultiValues('pivotAgeingDropdown');
+        const selectedStatuses = getSelectedMultiValues('pivotStatusDropdown');
+        const sortOrder = document.getElementById('pivotSortOrder').value;
+        const uploadTimeVal = document.getElementById('dumpTime').value.replace('T', ' ');
+
+        const dumpMap = new Map();
+        dumpData.forEach(d => {
+            const uw = cleanId(getValCaseInsensitive(d, 'parent_uw'));
+            if (uw) dumpMap.set(uw, String(getValCaseInsensitive(d, 'STATUS') || 'Unknown').trim());
+        });
+
+        let filteredPO = poData.filter(r => {
+            const uw = cleanId(getValCaseInsensitive(r, 'parent_uw'));
+            const qc = String(getValCaseInsensitive(r, 'QC_Fail') || '0').trim();
+            const ageing = String(getValCaseInsensitive(r, 'po_ageing Day') || '0').trim();
+            const status = dumpMap.get(uw) || 'Unknown';
+
+            if (selectedQC !== "(All)" && qc !== selectedQC) return false;
+            if (selectedAgeings.length > 0 && !selectedAgeings.includes(ageing)) return false;
+            if (selectedStatuses.length > 0 && !selectedStatuses.includes(status)) return false;
+            return true;
+        });
+
+        const gridData = {};
+        const activeStatuses = new Set();
+        const activeAgeings = new Set(selectedAgeings);
+
+        filteredPO.forEach(r => {
+            const uw = cleanId(getValCaseInsensitive(r, 'parent_uw'));
+            const ageing = String(getValCaseInsensitive(r, 'po_ageing Day') || '0').trim();
+            const status = dumpMap.get(uw) || 'Unknown';
+
+            activeStatuses.add(status);
+            if (!gridData[status]) gridData[status] = {};
+            gridData[status][ageing] = (gridData[status][ageing] || 0) + 1;
+        });
+
+        const sortedAgeings = Array.from(activeAgeings).sort((a,b) => Number(a) - Number(b));
+        let sortedStatuses = Array.from(activeStatuses);
+
+        if (sortOrder === 'grand_desc') {
+            sortedStatuses.sort((a,b) => {
+                const totalA = sortedAgeings.reduce((sum, d) => sum + (gridData[a][d] || 0), 0);
+                const totalB = sortedAgeings.reduce((sum, d) => sum + (gridData[b][d] || 0), 0);
+                return totalB - totalA;
+            });
+        } else if (sortOrder === 'grand_asc') {
+            sortedStatuses.sort((a,b) => {
+                const totalA = sortedAgeings.reduce((sum, d) => sum + (gridData[a][d] || 0), 0);
+                const totalB = sortedAgeings.reduce((sum, d) => sum + (gridData[b][d] || 0), 0);
+                return totalA - totalB;
+            });
+        } else if (sortOrder === 'status_asc') {
+            sortedStatuses.sort();
+        } else if (sortOrder === 'status_desc') {
+            sortedStatuses.sort().reverse();
+        }
+
+        let html = `
+            <thead>
+                <tr>
+                    <th colspan="${sortedAgeings.length + 2}" style="text-align: left; background-color: #d0e1f9;">
+                        Count of ${uploadTimeVal}
+                    </th>
+                </tr>
+                <tr>
+                    <th class="row-label">Row Labels</th>
+                    ${sortedAgeings.map(d => `<th>${d}</th>`).join('')}
+                    <th class="sortable-header" onclick="toggleGrandTotalSort()">Grand Total ↕</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        const columnTotals = {};
+        sortedAgeings.forEach(d => columnTotals[d] = 0);
+        let grandTotalAll = 0;
+
+        sortedStatuses.forEach(st => {
+            let rowTotal = 0;
+            html += `<tr><td class="row-label">${st}</td>`;
+            sortedAgeings.forEach(d => {
+                const count = gridData[st] ? (gridData[st][d] || 0) : 0;
+                rowTotal += count;
+                columnTotals[d] += count;
+                html += `<td>${count || ''}</td>`;
+            });
+            grandTotalAll += rowTotal;
+            html += `<td style="font-weight: bold;">${rowTotal}</td></tr>`;
+        });
+
+        html += `
+            <tr class="grand-total">
+                <td class="row-label">Grand Total</td>
+                ${sortedAgeings.map(d => `<td>${columnTotals[d]}</td>`).join('')}
+                <td>${grandTotalAll}</td>
+            </tr>
+            </tbody>
+        `;
+
+        document.getElementById('pivotTable').innerHTML = html;
+    }
+
+    function toggleGrandTotalSort() {
+        const select = document.getElementById('pivotSortOrder');
+        select.value = select.value === 'grand_desc' ? 'grand_asc' : 'grand_desc';
+        renderPivotTable();
+    }
+
+    async function loadTrackerFromDB() {
+        const all = await getAllOrdersFromDB();
+        trackerAllOrders = all.filter(o => !o.is_grn);
+        grnOrders = all.filter(o => o.is_grn);
+
+        setupTrackerFilters();
+        filterTrackerData();
+        renderGRNTable();
+    }
+
+    function setupTrackerFilters() {
+        const ageings = [...new Set(trackerAllOrders.map(o => String(o.po_ageing).trim()))].sort((a,b) => Number(a)-Number(b));
+        populateTrackerMultiOptions('trackerAgeingOptions', ageings);
+
+        const statuses = [...new Set(trackerAllOrders.map(o => String(o.current_status).trim()))].sort();
+        populateTrackerMultiOptions('trackerStatusOptions', statuses);
+    }
+
+    function calculateDelay(history) {
+        if (!history || history.length === 0) return { text: "-", isHigh: false, ms: 0 };
+        
+        const currentStage = history[history.length - 1].status;
+        const lastTimestampStr = history[history.length - 1].timestamp;
+        
+        let firstTimestampInStageStr = lastTimestampStr;
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].status === currentStage) {
+                firstTimestampInStageStr = history[i].timestamp;
+            } else { break; }
+        }
+
+        const firstTime = new Date(firstTimestampInStageStr.replace(' ', 'T'));
+        const lastTime = new Date(lastTimestampStr.replace(' ', 'T'));
+
+        if (isNaN(firstTime.getTime()) || isNaN(lastTime.getTime())) return { text: "-", isHigh: false, ms: 0 };
+
+        const diffMs = lastTime - firstTime;
+        const totalMinutes = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(totalMinutes / 60);
+        const remMinutes = totalMinutes % 60;
+        const diffDays = Math.floor(diffHours / 24);
+        const remHours = diffHours % 24;
+
+        let text = "";
+        if (diffDays > 0) text = `${diffDays}d ${remHours}h ${remMinutes}m stuck in stage`;
+        else if (diffHours > 0) text = `${diffHours}h ${remMinutes}m stuck in stage`;
+        else text = `${remMinutes}m stuck in stage`;
+
+        return { text: text, isHigh: diffHours >= 24, ms: diffMs };
+    }
+
+    function filterTrackerData() {
+        const searchText = document.getElementById('trackerSearch').value.toLowerCase().trim();
+        const selectedAgeings = getSelectedMultiValues('trackerAgeingDropdown');
+        const selectedStatuses = getSelectedMultiValues('trackerStatusDropdown');
+
+        trackerFilteredOrders = trackerAllOrders.filter(o => {
+            const matchesSearch = !searchText || 
+                String(o.parent_uw).toLowerCase().includes(searchText) ||
+                String(o.increment_id).toLowerCase().includes(searchText) ||
+                String(o.job_id).toLowerCase().includes(searchText) ||
+                String(o.lensname).toLowerCase().includes(searchText);
+
+            const matchesAgeing = selectedAgeings.length === 0 || selectedAgeings.includes(String(o.po_ageing).trim());
+            const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(String(o.current_status).trim());
+
+            return matchesSearch && matchesAgeing && matchesStatus;
+        });
+
+        trackerFilteredOrders.forEach(o => {
+            const delay = calculateDelay(o.history);
+            o.delay_ms = delay.ms;
+            o.delay_text = delay.text;
+            o.delay_high = delay.isHigh;
+        });
+
+        sortTrackerData();
+        currentPage = 1;
+        renderTrackerTable();
+    }
+
+    function handleTrackerHeaderSort(columnKey) {
+        if (trackerSortColumn === columnKey) {
+            trackerSortDirection = trackerSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            trackerSortColumn = columnKey;
+            trackerSortDirection = 'asc';
+        }
+        sortTrackerData();
+        renderTrackerTable();
+    }
+
+    function sortTrackerData() {
+        const col = trackerSortColumn;
+        const dir = trackerSortDirection === 'asc' ? 1 : -1;
+
+        trackerFilteredOrders.sort((a, b) => {
+            let valA = a[col] !== undefined ? a[col] : '';
+            let valB = b[col] !== undefined ? b[col] : '';
+
+            if (col === 'po_ageing' || col === 'delay_ms') {
+                return (Number(valA) - Number(valB)) * dir;
+            } else {
+                return String(valA).localeCompare(String(valB), undefined, { numeric: true }) * dir;
+            }
+        });
+
+        ['po_ageing', 'parent_uw', 'increment_id', 'job_id', 'lensname', 'dump_inc_id', 'delay_ms', 'current_status'].forEach(k => {
+            const el = document.getElementById(`sort_${k}`);
+            if (el) {
+                if (k === trackerSortColumn) {
+                    el.innerText = trackerSortDirection === 'asc' ? ' ▲' : ' ▼';
+                } else {
+                    el.innerText = ' ↕';
+                }
+            }
+        });
+    }
+
+    function renderTrackerTable() {
+        const tbody = document.getElementById('trackerTableBody');
+        const total = trackerFilteredOrders.length;
+
+        if (total === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#888;">No active pending records found.</td></tr>';
+            document.getElementById('pageInfo').innerText = "Showing 0 of 0 records";
+            return;
+        }
+
+        const startIdx = (currentPage - 1) * pageSize;
+        const endIdx = Math.min(startIdx + pageSize, total);
+        const pageOrders = trackerFilteredOrders.slice(startIdx, endIdx);
+
+        let html = '';
+        pageOrders.forEach(o => {
+            const historyHtml = o.history.map((h, index) => {
+                const isCurrent = index === o.history.length - 1;
+                return `
+                    <span class="stage-chip ${isCurrent ? 'current' : ''}">
+                        ${h.status}
+                        <span class="time-text">${h.timestamp}</span>
+                    </span>
+                `;
+            }).join(' ➔ ');
+
+            const qcBadge = String(o.qc_fail) === '1' ? `<span class="qc-badge">QC FAIL</span>` : '';
+            const recreateBadge = (o.recreate_count && o.recreate_count > 1) ? `<span class="recreate-badge">${o.recreate_count} Jobs Recreated</span>` : '';
+
+            html += `
+                <tr>
+                    <td><strong>${o.po_ageing}</strong></td>
+                    <td>${o.parent_uw}${qcBadge}${recreateBadge}</td>
+                    <td>${o.increment_id}</td>
+                    <td>${o.job_id || '-'}</td>
+                    <td>${o.lensname}</td>
+                    <td>${o.dump_inc_id || '-'}</td>
+                    <td><span class="delay-badge ${o.delay_high ? 'high' : 'normal'}">${o.delay_text}</span></td>
+                    <td>${historyHtml}</td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+        document.getElementById('pageInfo').innerText = `Showing ${startIdx + 1} - ${endIdx} of ${total} records`;
+    }
+
+    function renderGRNTable() {
+        const tbody = document.getElementById('grnTableBody');
+        if (grnOrders.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#888;">No completed GRN orders recorded yet.</td></tr>';
+            return;
+        }
+
+        let html = '';
+        grnOrders.forEach(o => {
+            const historyHtml = o.history.map((h) => `
+                <span class="stage-chip">
+                    ${h.status}
+                    <span class="time-text">${h.timestamp}</span>
+                </span>
+            `).join(' ➔ ');
+
+            html += `
+                <tr>
+                    <td><span class="grn-badge">GRN Done</span></td>
+                    <td><strong>${o.parent_uw}</strong></td>
+                    <td>${o.increment_id}</td>
+                    <td>${o.job_id || '-'}</td>
+                    <td>${o.lensname}</td>
+                    <td>${o.current_status}</td>
+                    <td>${o.grn_timestamp || '-'}</td>
+                    <td>${historyHtml}</td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    }
+
+    function changePage(direction) {
+        const maxPage = Math.ceil(trackerFilteredOrders.length / pageSize);
+        if (currentPage + direction >= 1 && currentPage + direction <= maxPage) {
+            currentPage += direction;
+            renderTrackerTable();
+        }
+    }
+
+    function exportTrackerToExcel() {
+        if (trackerFilteredOrders.length === 0) {
+            alert("No active tracker records to export.");
+            return;
+        }
+
+        const exportData = trackerFilteredOrders.map(o => {
+            const delay = calculateDelay(o.history).text;
+            const historyTimeline = o.history.map(h => `${h.status} (${h.timestamp})`).join(" -> ");
+            return {
+                "PO Ageing Day": o.po_ageing,
+                "Parent_UW": o.parent_uw,
+                "QC Fail": o.qc_fail,
+                "Recreated Jobs Count": o.recreate_count || 1,
+                "PO Increment ID": o.increment_id,
+                "All Job IDs": o.job_id,
+                "Lens Name": o.lensname,
+                "Dump Increment IDs": o.dump_inc_id,
+                "Current Status": o.current_status,
+                "Time in Stage / Delay": delay,
+                "Full Stage History": historyTimeline
+            };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Active Tracker Data");
+        XLSX.writeFile(workbook, `Active_Orders_Tracker_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    function exportGRNToExcel() {
+        if (grnOrders.length === 0) {
+            alert("No completed GRN records to export.");
+            return;
+        }
+
+        const exportData = grnOrders.map(o => {
+            const historyTimeline = o.history.map(h => `${h.status} (${h.timestamp})`).join(" -> ");
+            return {
+                "Parent_UW": o.parent_uw,
+                "PO Increment ID": o.increment_id,
+                "Job ID": o.job_id,
+                "Lens Name": o.lensname,
+                "Final Stage": o.current_status,
+                "GRN Completion Timestamp": o.grn_timestamp,
+                "Full Journey History": historyTimeline
+            };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "GRN Completed Orders");
+        XLSX.writeFile(workbook, `GRN_Completed_Orders_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    async function exportDataJSON() {
+        const orders = await getAllOrdersFromDB();
+        if (orders.length === 0) {
+            alert("No data available to export.");
+            return;
+        }
+        const blob = new Blob([JSON.stringify(orders, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `order_tracker_backup_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+    }
+
+    async function importDataJSON(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const imported = JSON.parse(evt.target.result);
+                if (Array.isArray(imported)) {
+                    for (let order of imported) {
+                        await saveOrderToDB(order);
+                    }
+                    await loadTrackerFromDB();
+                    alert(`Successfully imported ${imported.length} historical records!`);
+                }
+            } catch (err) {
+                alert("Failed to parse backup JSON file.");
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    window.onload = async () => {
+        await openDatabase();
+        await loadTrackerFromDB();
+    };
+</script>
+
+</body>
+</html>
